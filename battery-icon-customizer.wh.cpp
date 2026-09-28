@@ -1,7 +1,7 @@
 // ==WindhawkMod==
 // @id              battery-icon-customizer
 // @name            Taskbar Battery Icon Customizer
-// @description     Restyle the Windows 11 taskbar battery icon: Apple iOS or classic look, percentage only, your own colors, size and spacing - all from simple dropdowns
+// @description     Restyle the Windows 11 taskbar battery icon: Apple iOS or classic look, percentage only, your own colors, charging animations, size and spacing - all from simple dropdowns
 // @version         1.0
 // @author          Faizaan
 // @github          https://github.com/LoneFaizaan
@@ -23,6 +23,8 @@ Give the Windows 11 taskbar battery icon a new look - no coding needed.
 
 ![Preview of the available looks](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/main/images/preview.png)
 
+![Charger and charging animations](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/main/images/animations.gif)
+
 * **Apple iOS style** - a solid pill with the percentage cut out of it, green
   while charging, yellow in battery saver and red when low.
 * **Classic style** - the older, compact single-color Windows 11 battery.
@@ -32,6 +34,9 @@ Give the Windows 11 taskbar battery icon a new look - no coding needed.
 * **Your own colors** - pick a color for every state (on battery, charging,
   plugged in, battery saver, low, very low) from simple lists.
 * **Battery percentage** - next to the icon or inside the battery.
+* **Animations** - bounce, zoom or flash when you plug in; shake, drop or
+  flash when you unplug; a "filling up" or breathing effect while charging;
+  and a pulse or blink when the battery is low.
 * **Size and spacing** - make it bigger or line it up with the Wi-Fi and
   volume icons.
 
@@ -48,7 +53,9 @@ Want something else? Set **Quick look** to **Build my own**, then choose:
 * **Color mode** - *Automatic*, *Single color*, or *My own colors* (then pick a
   color for each battery state from the lists under **Colors**).
 * **Show battery percentage** - off, next to the icon, or inside it.
-* **Size and spacing** - these apply to every look, including Quick looks.
+* **Size and spacing** and **Animations** - these apply to every look,
+  including Quick looks. Turn on "Preview the charger animations" to see the
+  plug-in and unplug animations each time you save.
 
 Need an exact shade? Pick **Custom** in a color list and type a hex code such
 as `#FF4545` in the matching field of **Exact colors** at the bottom.
@@ -330,6 +337,45 @@ Requires a Windows 11 build with the new colored battery icon (Windows 11
     - outline: "Outlined pill"
   $name: Percentage-only style
   $description: "Used when the icon is shown as a percentage only (Quick look or Icon style \"Percentage only\"). Its colors follow Color mode and the Colors section."
+- animations:
+  - plugIn: bounce
+    $name: "When the charger is plugged in"
+    $options:
+    - none: "No animation"
+    - bounce: "Bounce"
+    - zoom: "Zoom in"
+    - flash: "Flash"
+  - unplug: shake
+    $name: "When the charger is unplugged"
+    $options:
+    - none: "No animation"
+    - shake: "Shake"
+    - drop: "Drop"
+    - flash: "Flash"
+  - whileCharging: none
+    $name: "While charging"
+    $options:
+    - none: "No animation"
+    - fillUp: "Filling up - the fill rises to full, then repeats"
+    - breathing: "Breathing - the fill gently fades in and out"
+  - lowBattery: pulse
+    $name: "When the battery is low"
+    $description: "On battery, at or below \"Low battery starts at (%)\" under Colors."
+    $options:
+    - none: "No animation"
+    - pulse: "Pulse"
+    - blink: "Blink"
+  - speed: normal
+    $name: "Animation speed"
+    $options:
+    - slow: "Slow"
+    - normal: "Normal"
+    - fast: "Fast"
+  - preview: true
+    $name: "Preview the charger animations when saving settings"
+    $description: "Plays the plug-in and unplug animations once each time you click Save settings, so you can try them without unplugging."
+  $name: Animations
+  $description: "These apply to every look, including Quick looks."
 - size:
   - scale: 100
     $name: "Icon size (%)"
@@ -387,6 +433,7 @@ Requires a Windows 11 build with the new colored battery icon (Windows 11
 #include <winrt/Windows.UI.Xaml.Automation.Peers.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Controls.h>
+#include <winrt/Windows.UI.Xaml.Media.Animation.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
 #include <winrt/Windows.UI.Xaml.h>
@@ -401,6 +448,10 @@ using winrt::Windows::Foundation::IInspectable;
 enum class IconStyle { modern, classic, apple, text };
 enum class TextChargingIcon { none, before, after };
 enum class TextBackground { none, pill, outline };
+enum class PlugAnimation { none, bounce, zoom, flash };
+enum class UnplugAnimation { none, shake, drop, flash };
+enum class ChargingAnimation { none, fillUp, breathing };
+enum class LowAnimation { none, pulse, blink };
 enum class ColorMode { windows, monochrome, custom };
 enum class PercentPosition { none, right, left, inside };
 
@@ -442,6 +493,12 @@ struct {
     bool textPercentSign;
     TextChargingIcon textChargingIcon;
     TextBackground textBackground;
+    PlugAnimation plugAnimation;
+    UnplugAnimation unplugAnimation;
+    ChargingAnimation chargingAnimation;
+    LowAnimation lowAnimation;
+    double animationSpeed;  // multiplier for animation durations
+    bool animationPreview;
 } g_settings;
 
 std::atomic<bool> g_unloading;
@@ -715,6 +772,35 @@ void LoadSettings() {
     }
     Wh_FreeStringSetting(background);
 
+    // Returns the index of the chosen option, or `fallback` if missing.
+    auto readChoice = [](PCWSTR name, std::initializer_list<PCWSTR> options,
+                         int fallback) {
+        PCWSTR value = Wh_GetStringSetting(name);
+        int result = fallback;
+        int index = 0;
+        for (PCWSTR option : options) {
+            if (wcscmp(value, option) == 0) {
+                result = index;
+                break;
+            }
+            index++;
+        }
+        Wh_FreeStringSetting(value);
+        return result;
+    };
+    g_settings.plugAnimation = (PlugAnimation)readChoice(
+        L"animations.plugIn", {L"none", L"bounce", L"zoom", L"flash"}, 1);
+    g_settings.unplugAnimation = (UnplugAnimation)readChoice(
+        L"animations.unplug", {L"none", L"shake", L"drop", L"flash"}, 1);
+    g_settings.chargingAnimation = (ChargingAnimation)readChoice(
+        L"animations.whileCharging", {L"none", L"fillUp", L"breathing"}, 0);
+    g_settings.lowAnimation = (LowAnimation)readChoice(
+        L"animations.lowBattery", {L"none", L"pulse", L"blink"}, 1);
+    int speed = readChoice(L"animations.speed",
+                           {L"slow", L"normal", L"fast"}, 1);
+    g_settings.animationSpeed = speed == 0 ? 1.6 : speed == 2 ? 0.6 : 1.0;
+    g_settings.animationPreview = Wh_GetIntSetting(L"animations.preview");
+
     PCWSTR preset = Wh_GetStringSetting(L"preset");
     ApplyPreset(preset);
     Wh_FreeStringSetting(preset);
@@ -898,6 +984,22 @@ struct BatteryIcon {
     Shapes::Polygon textBoltAfter{nullptr};
     std::wstring textKey;
 
+    // Animations.
+    Media::CompositeTransform fxTransform{nullptr};
+    Media::Animation::Storyboard oneShot{nullptr};
+    Media::Animation::Storyboard oneShot2{nullptr};
+    Media::Animation::Storyboard loop{nullptr};
+    UIElement loopTarget{nullptr};
+    int loopKind = 0;
+    DispatcherTimer fillUpTimer{nullptr};
+    int fillUpStep = 0;
+    bool hasLastState = false;
+    BatteryState lastState = BatteryState::Unknown;
+    // Last Apple-style colors, reused by the "filling up" animation.
+    winrt::Windows::UI::Color appleFill{}, appleTrack{}, appleOnFill{},
+        appleOnTrack{};
+    double appleWidth = 0;
+
     int64_t contentForegroundToken = 0;
     int64_t outlineTextToken = 0;
     int64_t fillTextToken = 0;
@@ -1015,6 +1117,7 @@ Media::Brush ResolveColor(const ColorSpec& spec,
 bool NeedsPeriodicUpdate() {
     const auto& s = g_settings;
     return s.style != IconStyle::modern ||
+           s.lowAnimation != LowAnimation::none ||
            s.percentPosition != PercentPosition::none ||
            (s.colorMode == ColorMode::custom &&
             (s.low.kind != ColorSpec::Kind::Default ||
@@ -1065,6 +1168,25 @@ Media::LinearGradientBrush MakeSplitBrush(Color left,
         stops.Append(stop);
     }
     return brush;
+}
+
+// Fill level of the Apple pill (0..1): the fill/track split and the matching
+// clips of the two number layers.
+void ApplyAppleLevel(BatteryIcon& icon, double level) {
+    level = std::clamp(level, 0.0, 1.0);
+    icon.appleBody.Background(MakeSplitBrush(icon.appleFill, icon.appleTrack,
+                                             level, /*absoluteWidth=*/0));
+    float width = (float)icon.appleWidth;
+    float splitX = (float)(icon.appleWidth * level);
+    for (bool overFill : {true, false}) {
+        auto& tb = overFill ? icon.appleText : icon.appleTextTrack;
+        Media::RectangleGeometry clip;
+        clip.Rect(overFill ? winrt::Windows::Foundation::Rect{-50, -50,
+                                                              splitX + 50, 200}
+                           : winrt::Windows::Foundation::Rect{
+                                 splitX, -50, width + 50 - splitX, 200});
+        tb.Clip(clip);
+    }
 }
 
 // Colors shared by the Apple and percentage-only styles.
@@ -1244,10 +1366,12 @@ void UpdateAppleIcon(BatteryIcon& icon,
     icon.appleBody.Width(width);
     icon.appleBody.Height(height);
     icon.appleBody.CornerRadius(CornerRadius{radius, radius, radius, radius});
-    icon.appleBody.Background(
-        MakeSplitBrush(fillColor, trackColor, level, /*absoluteWidth=*/0));
+    icon.appleFill = fillColor;
+    icon.appleTrack = trackColor;
+    icon.appleOnFill = onFill;
+    icon.appleOnTrack = onTrack;
+    icon.appleWidth = width;
 
-    float splitX = (float)(width * std::clamp(level, 0.0, 1.0));
     for (bool overFill : {true, false}) {
         auto& tb = overFill ? icon.appleText : icon.appleTextTrack;
         SetVisible(tb, showNumber);
@@ -1260,13 +1384,8 @@ void UpdateAppleIcon(BatteryIcon& icon,
         tb.FontWeight(winrt::Windows::UI::Text::FontWeight{
             (uint16_t)(s.percentBold ? 800 : 600)});
         tb.Foreground(Media::SolidColorBrush(overFill ? onFill : onTrack));
-        Media::RectangleGeometry clip;
-        clip.Rect(overFill ? winrt::Windows::Foundation::Rect{-50, -50,
-                                                              splitX + 50, 200}
-                           : winrt::Windows::Foundation::Rect{
-                                 splitX, -50, (float)width + 50 - splitX, 200});
-        tb.Clip(clip);
     }
+    ApplyAppleLevel(icon, level);
 
     icon.appleNub.Width(nubWidth);
     icon.appleNub.Height(nubHeight);
@@ -1384,6 +1503,305 @@ void UpdateTextIcon(BatteryIcon& icon,
             bolt.Fill(Media::SolidColorBrush(boltColor));
             bolt.Margin(before ? Thickness{0, 0, gap, 0}
                                : Thickness{gap, 0, 0, 0});
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Animations
+
+namespace Anim = winrt::Windows::UI::Xaml::Media::Animation;
+
+enum LoopKind { kLoopNone, kLoopBreathing, kLoopFillUp, kLoopLowPulse, kLoopLowBlink };
+
+winrt::Windows::Foundation::TimeSpan ScaledMs(double ms) {
+    return std::chrono::milliseconds((int64_t)(ms * g_settings.animationSpeed));
+}
+
+// Adds a key-framed animation of `property` on `target`. Frames are
+// {milliseconds, value}; times are scaled by the animation speed setting.
+void AddKeyFrames(Anim::Storyboard const& storyboard,
+                  DependencyObject const& target,
+                  PCWSTR property,
+                  std::initializer_list<std::pair<double, double>> frames) {
+    Anim::DoubleAnimationUsingKeyFrames animation;
+    for (auto [ms, value] : frames) {
+        Anim::SineEase ease;
+        ease.EasingMode(Anim::EasingMode::EaseInOut);
+        Anim::EasingDoubleKeyFrame frame;
+        frame.KeyTime(Anim::KeyTimeHelper::FromTimeSpan(ScaledMs(ms)));
+        frame.Value(value);
+        frame.EasingFunction(ease);
+        animation.KeyFrames().Append(frame);
+    }
+    Anim::Storyboard::SetTarget(animation, target);
+    Anim::Storyboard::SetTargetProperty(animation, property);
+    storyboard.Children().Append(animation);
+}
+
+void StopStoryboard(Anim::Storyboard& storyboard) {
+    if (storyboard) {
+        storyboard.Stop();
+        storyboard = nullptr;
+    }
+}
+
+// The one-shot animations move and scale the whole battery visual.
+void EnsureFxTransform(BatteryIcon& icon, UIElement const& glyphGrid) {
+    if (!icon.fxTransform) {
+        icon.fxTransform = Media::CompositeTransform();
+    }
+    if (glyphGrid.RenderTransform() != icon.fxTransform) {
+        OverrideProperty(icon, glyphGrid, UIElement::RenderTransformProperty(),
+                         icon.fxTransform);
+        OverrideProperty(icon, glyphGrid,
+                         UIElement::RenderTransformOriginProperty(),
+                         winrt::box_value(winrt::Windows::Foundation::Point{0.5f, 0.5f}));
+    }
+}
+
+Anim::Storyboard BuildChargerAnimation(BatteryIcon& icon,
+                                       UIElement const& glyphGrid,
+                                       bool pluggedIn) {
+    const auto& s = g_settings;
+    auto t = icon.fxTransform;
+    Anim::Storyboard sb;
+    if (pluggedIn) {
+        switch (s.plugAnimation) {
+            case PlugAnimation::bounce:
+                for (PCWSTR p : {L"ScaleX", L"ScaleY"}) {
+                    AddKeyFrames(sb, t, p,
+                                 {{0, 1}, {120, 1.3}, {260, 0.9}, {380, 1.07},
+                                  {480, 1}});
+                }
+                break;
+            case PlugAnimation::zoom:
+                for (PCWSTR p : {L"ScaleX", L"ScaleY"}) {
+                    AddKeyFrames(sb, t, p, {{0, 0.3}, {280, 1.12}, {420, 1}});
+                }
+                AddKeyFrames(sb, glyphGrid, L"Opacity", {{0, 0}, {200, 1}});
+                break;
+            case PlugAnimation::flash:
+                AddKeyFrames(sb, glyphGrid, L"Opacity",
+                             {{0, 1}, {120, 0.15}, {240, 1}, {360, 0.15}, {480, 1}});
+                break;
+            case PlugAnimation::none:
+                return nullptr;
+        }
+    } else {
+        switch (s.unplugAnimation) {
+            case UnplugAnimation::shake:
+                AddKeyFrames(sb, t, L"TranslateX",
+                             {{0, 0}, {70, -5}, {140, 5}, {210, -4}, {280, 4},
+                              {350, -2}, {420, 2}, {490, 0}});
+                break;
+            case UnplugAnimation::drop:
+                AddKeyFrames(sb, t, L"TranslateY", {{0, 0}, {150, 4}, {320, 0}});
+                AddKeyFrames(sb, t, L"ScaleY", {{0, 1}, {150, 0.8}, {320, 1}});
+                break;
+            case UnplugAnimation::flash:
+                AddKeyFrames(sb, glyphGrid, L"Opacity",
+                             {{0, 1}, {120, 0.15}, {240, 1}, {360, 0.15}, {480, 1}});
+                break;
+            case UnplugAnimation::none:
+                return nullptr;
+        }
+    }
+    sb.FillBehavior(Anim::FillBehavior::Stop);
+    return sb;
+}
+
+// Plays the plug-in or unplug animation. `thenUnplug` chains the unplug
+// animation after the plug-in one (used for the preview).
+void PlayChargerAnimation(BatteryIcon& icon,
+                          UIElement const& glyphGrid,
+                          bool pluggedIn,
+                          bool thenUnplug) {
+    StopStoryboard(icon.oneShot);
+    StopStoryboard(icon.oneShot2);
+    EnsureFxTransform(icon, glyphGrid);
+
+    if (auto sb = BuildChargerAnimation(icon, glyphGrid, pluggedIn)) {
+        sb.Begin();
+        icon.oneShot = sb;
+    }
+    if (thenUnplug) {
+        if (auto sb = BuildChargerAnimation(icon, glyphGrid, false)) {
+            sb.BeginTime(winrt::box_value(ScaledMs(900))
+                             .as<winrt::Windows::Foundation::IReference<
+                                 winrt::Windows::Foundation::TimeSpan>>());
+            sb.Begin();
+            icon.oneShot2 = sb;
+        }
+    }
+}
+
+void StopLoop(BatteryIcon& icon) {
+    StopStoryboard(icon.loop);
+    if (icon.fillUpTimer) {
+        icon.fillUpTimer.Stop();
+        icon.fillUpTimer = nullptr;
+    }
+    icon.loopKind = kLoopNone;
+    icon.loopTarget = nullptr;
+}
+
+// Fill glyph of the modern style for a level (0-10) in a given state.
+wchar_t ModernFillGlyph(BatteryState state, int level) {
+    if (level <= 0) {
+        return 0;
+    }
+    if (level >= 3 && state == BatteryState::Charging) {
+        return (wchar_t)(L'' + (level - 3));
+    }
+    if (level >= 3 && state == BatteryState::PluggedIn) {
+        return (wchar_t)(L'' + (level - 3));
+    }
+    return (wchar_t)(L'' + level);
+}
+
+// "Filling up": the fill rises from the current level to full, holds, and
+// starts over.
+void FillUpTick(BatteryIcon& icon) {
+    if (icon.dead || g_unloading) {
+        return;
+    }
+    auto sysOutline = icon.sysOutline.get();
+    auto sysFill = icon.sysFill.get();
+    if (!sysOutline || !sysFill) {
+        return;
+    }
+
+    try {
+        const auto& s = g_settings;
+        BatteryState state =
+            StateFromOutlineGlyph(std::wstring(sysOutline.Text()));
+        int percent = GetBatteryPercent();
+        int baseLevel = percent >= 0 ? std::clamp((percent + 5) / 10, 0, 10)
+                                     : LevelFromFillGlyph(sysFill.Text());
+        if (s.style == IconStyle::apple) {
+            // Smooth rise, 4% per tick, then a short hold at full.
+            double real = percent >= 0 ? percent / 100.0 : baseLevel / 10.0;
+            int rise = (int)std::ceil((1.0 - real) / 0.04);
+            int steps = std::max(rise + 1 + 3, 5);
+            icon.fillUpStep = (icon.fillUpStep + 1) % steps;
+            ApplyAppleLevel(icon, std::min(1.0, real + icon.fillUpStep * 0.04));
+            icon.appleKey.clear();  // the next regular update restores it
+            return;
+        }
+
+        int steps = std::max((10 - baseLevel) + 3, 4);  // rise, brief hold
+        icon.fillUpStep = (icon.fillUpStep + 1) % steps;
+        int level = std::min(10, baseLevel + icon.fillUpStep);
+
+        if (s.style == IconStyle::classic) {
+            icon.classic.Text(winrt::hstring(
+                std::wstring(1, (wchar_t)(kClassicCharging0 + level))));
+        } else {
+            wchar_t glyph = ModernFillGlyph(state, level);
+            icon.fill.Text(glyph ? winrt::hstring(std::wstring(1, glyph))
+                                 : winrt::hstring());
+        }
+    } catch (winrt::hresult_error const& e) {
+        Wh_Log(L"Fill-up animation failed: %08X", (unsigned)e.code());
+    }
+}
+
+void StartLoop(BatteryIcon& icon, int kind, UIElement const& target) {
+    icon.loopKind = kind;
+    icon.loopTarget = target;
+
+    if (kind == kLoopFillUp) {
+        BatteryIcon* iconPtr = &icon;
+        icon.fillUpStep = 0;
+        icon.fillUpTimer = DispatcherTimer();
+        icon.fillUpTimer.Interval(
+            ScaledMs(g_settings.style == IconStyle::apple ? 80 : 220));
+        icon.fillUpTimer.Tick([iconPtr](IInspectable const&, IInspectable const&) {
+            FillUpTick(*iconPtr);
+        });
+        icon.fillUpTimer.Start();
+        return;
+    }
+
+    Anim::Storyboard sb;
+    switch (kind) {
+        case kLoopBreathing:
+            AddKeyFrames(sb, target, L"Opacity", {{0, 1}, {1100, 0.35}});
+            sb.AutoReverse(true);
+            break;
+        case kLoopLowPulse:
+            AddKeyFrames(sb, target, L"Opacity", {{0, 1}, {800, 0.3}});
+            sb.AutoReverse(true);
+            break;
+        case kLoopLowBlink:
+            AddKeyFrames(sb, target, L"Opacity",
+                         {{0, 1}, {380, 1}, {420, 0.1}, {760, 0.1}, {800, 1}});
+            break;
+    }
+    sb.RepeatBehavior(Anim::RepeatBehaviorHelper::Forever());
+    sb.Begin();
+    icon.loop = sb;
+}
+
+void UpdateAnimations(BatteryIcon& icon,
+                      BatteryState state,
+                      int percent,
+                      UIElement const& glyphGrid,
+                      UIElement const& stackPanel,
+                      bool classic,
+                      bool apple,
+                      bool textOnly,
+                      bool inside) {
+    const auto& s = g_settings;
+    bool known = state != BatteryState::Unknown;
+    bool connected = state == BatteryState::Charging ||
+                     state == BatteryState::PluggedIn;
+
+    // One-shot animation when the charger is plugged in or unplugged.
+    if (known) {
+        if (icon.hasLastState) {
+            bool wasConnected = icon.lastState == BatteryState::Charging ||
+                                icon.lastState == BatteryState::PluggedIn;
+            if (connected != wasConnected) {
+                PlayChargerAnimation(icon, glyphGrid, connected, false);
+            }
+        }
+        icon.lastState = state;
+        icon.hasLastState = true;
+    }
+
+    // Looping animation while charging or when the battery is low.
+    int kind = kLoopNone;
+    UIElement target{nullptr};
+    if (known && connected &&
+        s.chargingAnimation != ChargingAnimation::none) {
+        bool fillUp = s.chargingAnimation == ChargingAnimation::fillUp &&
+                      !textOnly && !inside;
+        kind = fillUp ? kLoopFillUp : kLoopBreathing;
+        if (textOnly) {
+            target = icon.textRoot;
+        } else if (apple) {
+            target = icon.appleBody;
+        } else if (classic) {
+            target = icon.classic;
+        } else if (inside) {
+            target = icon.insideText;
+        } else {
+            target = icon.fill;
+        }
+    } else if (known && !connected && percent >= 0 &&
+               percent <= s.lowThreshold &&
+               s.lowAnimation != LowAnimation::none) {
+        kind = s.lowAnimation == LowAnimation::blink ? kLoopLowBlink
+                                                     : kLoopLowPulse;
+        target = stackPanel;
+    }
+
+    if (kind != icon.loopKind || target != icon.loopTarget) {
+        StopLoop(icon);
+        if (kind != kLoopNone) {
+            StartLoop(icon, kind, target);
         }
     }
 }
@@ -1653,6 +2071,9 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
         RestoreProperty(icon, stackPanel, UIElement::RenderTransformProperty());
     }
 
+    UpdateAnimations(icon, state, percent, glyphGrid, stackPanel, classic,
+                     apple, textOnly, inside);
+
     // Keep the percentage and low/critical colors up to date.
     if (NeedsPeriodicUpdate()) {
         if (!icon.timer) {
@@ -1706,6 +2127,9 @@ void DetachBatteryIcon(BatteryIcon& icon) {
             icon.timer.Stop();
             icon.timer = nullptr;
         }
+        StopStoryboard(icon.oneShot);
+        StopStoryboard(icon.oneShot2);
+        StopLoop(icon);
 
         if (auto tb = icon.sysOutline.get()) {
             tb.UnregisterPropertyChangedCallback(
@@ -2163,7 +2587,20 @@ void ApplySettingsFromTaskbarThread(HWND hTaskbarWnd, bool reloadSettings) {
         if (g_unloading) {
             DetachBatteryIcon(icon);
         } else {
+            if (reloadSettings && !icon.dead) {
+                // Restart looping animations with the new settings.
+                StopLoop(icon);
+            }
             UpdateBatteryIcon(icon);
+            if (reloadSettings && !icon.dead && g_settings.animationPreview) {
+                if (auto glyphGrid = icon.glyphGrid.get()) {
+                    try {
+                        PlayChargerAnimation(icon, glyphGrid, true, true);
+                    } catch (winrt::hresult_error const& e) {
+                        Wh_Log(L"Preview failed: %08X", (unsigned)e.code());
+                    }
+                }
+            }
         }
     }
     std::erase_if(g_batteryIcons, [](const BatteryIcon& icon) { return icon.dead; });

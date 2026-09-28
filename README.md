@@ -2,11 +2,14 @@
 
 A [Windhawk](https://windhawk.net) mod that restyles the Windows 11 taskbar
 battery icon: Apple iOS or classic look, percentage only, your own colors,
-size and spacing, all from simple dropdowns. No coding needed.
+charging animations, size and spacing, all from simple dropdowns. No coding
+needed.
 
 ![Preview of the available looks](images/preview.png)
 
 <sub>Some battery levels in the preview were captured with a simulated battery reading.</sub>
+
+![Charger and charging animations](images/animations.gif)
 
 ## Features
 
@@ -26,6 +29,11 @@ size and spacing, all from simple dropdowns. No coding needed.
   plugged in, battery saver, low, very low), plus the outline and charging
   bolt, from a list, or enter any hex code.
 - **Battery percentage**: left or right of the icon, or inside the battery.
+- **Animations**: bounce, zoom or flash when you plug in the charger; shake,
+  drop or flash when you unplug it; a "filling up" or breathing effect while
+  charging; and a pulse or blink when the battery is low. Speed is adjustable,
+  and a preview plays when you save settings, so you can try them without
+  unplugging.
 - **Size and spacing**: scale, margins and vertical offset, so the icon lines
   up with the Wi-Fi and volume icons.
 - Changes apply instantly, and disabling the mod restores the original icon.
@@ -56,6 +64,7 @@ size and spacing, all from simple dropdowns. No coding needed.
 | **Colors** | A color per battery state, plus outline and charging bolt. Used with *My own colors*. |
 | **Battery percentage** | Off, left, right or inside the icon; text size, bold, % sign and color. |
 | **Percentage-only style** | Text size, weight and font, % sign, charging bolt position, and background (none, colored pill or outlined pill). |
+| **Animations** | Plug-in and unplug animations, an animation while charging, a low-battery pulse or blink, speed, and a preview when saving. These apply to every look. |
 | **Size and spacing** | Icon size (%), extra space left/right, and vertical offset. These apply to every look. |
 | **Exact colors** | Hex codes (for example `#FF4545`) for any color set to *Custom*. |
 
