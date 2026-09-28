@@ -6,6 +6,7 @@
 // @author          Faizaan
 // @github          https://github.com/LoneFaizaan
 // @homepage        https://github.com/LoneFaizaan/battery-icon-customizer
+// @license         GPL-3.0
 // @include         explorer.exe
 // @architecture    x86-64
 // @compilerOptions -lole32 -loleaut32 -lruntimeobject -lversion
@@ -21,9 +22,9 @@
 
 Give the Windows 11 taskbar battery icon a new look - no coding needed.
 
-![Preview of the available looks](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/main/images/preview.png)
+![Preview of the available looks](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/8c7af22c99a4fc36276e0a709ddfc13248930a09/images/preview.png)
 
-![Charger and charging animations](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/main/images/animations.gif)
+![Charger and charging animations](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/8c7af22c99a4fc36276e0a709ddfc13248930a09/images/animations.gif)
 
 * **Apple iOS style** - a solid pill with the percentage cut out of it, green
   while charging, yellow in battery saver and red when low.
