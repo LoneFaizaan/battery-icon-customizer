@@ -1,7 +1,7 @@
 # Taskbar Battery Icon Customizer
 
 A [Windhawk](https://windhawk.net) mod that restyles the Windows 11 taskbar
-battery icon: Apple iOS or classic look, your own colors, battery percentage,
+battery icon: Apple iOS or classic look, percentage only, your own colors,
 size and spacing, all from simple dropdowns. No coding needed.
 
 ![Preview of the available looks](images/preview.png)
@@ -11,11 +11,17 @@ size and spacing, all from simple dropdowns. No coding needed.
 ## Features
 
 - **Quick looks**: one-click presets for Apple iOS (colored or single color),
-  Classic Windows 11, Windows default with percentage, and Minimal.
+  Classic Windows 11, Windows default with percentage, Minimal, and
+  Percentage only (plain or in a colored pill).
 - **Apple iOS style**: a solid pill with the percentage cut out of it. It turns
   green while charging, yellow in battery saver and red when low, and adapts to
   light and dark taskbars.
 - **Classic style**: the older, compact single-color Windows 11 battery glyph.
+- **Percentage only**: replace the icon with just the number. Choose the text
+  size, weight and font (Segoe UI Variable, Segoe UI, Bahnschrift, Cascadia
+  Code, Consolas), the % sign, a charging bolt before or after the number, and
+  an optional colored or outlined pill behind it. It uses the same automatic
+  or custom colors as the other styles.
 - **Your own colors**: pick a color for each state (on battery, charging,
   plugged in, battery saver, low, very low), plus the outline and charging
   bolt, from a list, or enter any hex code.
@@ -45,10 +51,11 @@ size and spacing, all from simple dropdowns. No coding needed.
 | Setting | What it does |
 | --- | --- |
 | **Quick look** | Ready-made looks. Choose *Build my own* to use the options below. |
-| **Icon style** | Windows 11, Classic Windows 11 or Apple iOS. |
+| **Icon style** | Windows 11, Classic Windows 11, Apple iOS or Percentage only. |
 | **Color mode** | *Automatic* (Windows / iOS colors), *Single color*, or *My own colors*. |
 | **Colors** | A color per battery state, plus outline and charging bolt. Used with *My own colors*. |
 | **Battery percentage** | Off, left, right or inside the icon; text size, bold, % sign and color. |
+| **Percentage-only style** | Text size, weight and font, % sign, charging bolt position, and background (none, colored pill or outlined pill). |
 | **Size and spacing** | Icon size (%), extra space left/right, and vertical offset. These apply to every look. |
 | **Exact colors** | Hex codes (for example `#FF4545`) for any color set to *Custom*. |
 

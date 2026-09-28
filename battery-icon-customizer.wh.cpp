@@ -1,7 +1,7 @@
 // ==WindhawkMod==
 // @id              battery-icon-customizer
 // @name            Taskbar Battery Icon Customizer
-// @description     Restyle the Windows 11 taskbar battery icon: Apple iOS or classic look, your own colors, battery percentage, size and spacing - all from simple dropdowns
+// @description     Restyle the Windows 11 taskbar battery icon: Apple iOS or classic look, percentage only, your own colors, size and spacing - all from simple dropdowns
 // @version         1.0
 // @author          Faizaan
 // @github          https://github.com/LoneFaizaan
@@ -24,6 +24,9 @@ Give the Windows 11 taskbar battery icon a new look - no coding needed.
 * **Apple iOS style** - a solid pill with the percentage cut out of it, green
   while charging, yellow in battery saver and red when low.
 * **Classic style** - the older, compact single-color Windows 11 battery.
+* **Percentage only** - replace the icon with just the number, with your
+  choice of size, weight, font, % sign, charging bolt and an optional colored
+  or outlined pill behind it.
 * **Your own colors** - pick a color for every state (on battery, charging,
   plugged in, battery saver, low, very low) from simple lists.
 * **Battery percentage** - next to the icon or inside the battery.
@@ -38,7 +41,8 @@ Give the Windows 11 taskbar battery icon a new look - no coding needed.
 
 Want something else? Set **Quick look** to **Build my own**, then choose:
 
-* **Icon style** - Windows 11, Classic Windows 11 or Apple iOS.
+* **Icon style** - Windows 11, Classic Windows 11, Apple iOS, or Percentage
+  only (then fine-tune it under **Percentage-only style**).
 * **Color mode** - *Automatic*, *Single color*, or *My own colors* (then pick a
   color for each battery state from the lists under **Colors**).
 * **Show battery percentage** - off, next to the icon, or inside it.
@@ -76,6 +80,8 @@ Requires a Windows 11 build with the new colored battery icon (Windows 11
   - classic: "Classic Windows 11 battery"
   - classicPercent: "Classic Windows 11 battery + percentage"
   - minimal: "Minimal - single color, percentage inside"
+  - text: "Percentage only - just the number, no icon"
+  - textPill: "Percentage only - number in a colored pill"
 - style: modern
   $name: Icon style
   $description: "Used when Quick look is \"Build my own\"."
@@ -83,6 +89,7 @@ Requires a Windows 11 build with the new colored battery icon (Windows 11
   - modern: "Windows 11 (outline with a colored fill)"
   - classic: "Classic Windows 11 (compact, single color)"
   - apple: "Apple iOS (pill with the percentage inside)"
+  - text: "Percentage only (just the number, no icon)"
 - colors:
   - mode: windows
     $name: Color mode
@@ -287,6 +294,40 @@ Requires a Windows 11 build with the new colored battery icon (Windows 11
   - spacing: 3
     $name: "Space between icon and percentage (px)"
   $name: Battery percentage
+- textOnly:
+  - fontSize: 13
+    $name: "Text size"
+  - weight: semibold
+    $name: "Text weight"
+    $options:
+    - regular: "Regular"
+    - semibold: "Semibold"
+    - bold: "Bold"
+  - font: default
+    $name: "Font"
+    $options:
+    - default: "Segoe UI Variable (Windows default)"
+    - segoe: "Segoe UI"
+    - bahnschrift: "Bahnschrift (narrow)"
+    - cascadia: "Cascadia Code"
+    - consolas: "Consolas (monospace)"
+  - percentSign: true
+    $name: "Show the % sign"
+  - chargingIcon: after
+    $name: "Charging bolt"
+    $description: "Shown while the charger is plugged in."
+    $options:
+    - after: "After the number"
+    - before: "Before the number"
+    - none: "Don't show"
+  - background: none
+    $name: "Background"
+    $options:
+    - none: "None - just the number"
+    - pill: "Colored pill (number cut out)"
+    - outline: "Outlined pill"
+  $name: Percentage-only style
+  $description: "Used when the icon is shown as a percentage only (Quick look or Icon style \"Percentage only\"). Its colors follow Color mode and the Colors section."
 - size:
   - scale: 100
     $name: "Icon size (%)"
@@ -355,7 +396,9 @@ using winrt::Windows::Foundation::IInspectable;
 ////////////////////////////////////////////////////////////////////////////////
 // Settings
 
-enum class IconStyle { modern, classic, apple };
+enum class IconStyle { modern, classic, apple, text };
+enum class TextChargingIcon { none, before, after };
+enum class TextBackground { none, pill, outline };
 enum class ColorMode { windows, monochrome, custom };
 enum class PercentPosition { none, right, left, inside };
 
@@ -391,6 +434,12 @@ struct {
     int marginLeft;
     int marginRight;
     int verticalOffset;
+    int textFontSize;
+    int textWeight;
+    std::wstring textFont;
+    bool textPercentSign;
+    TextChargingIcon textChargingIcon;
+    TextBackground textBackground;
 } g_settings;
 
 std::atomic<bool> g_unloading;
@@ -554,6 +603,11 @@ void ApplyPreset(PCWSTR preset) {
         set(IconStyle::classic, ColorMode::windows, PercentPosition::right);
     } else if (wcscmp(preset, L"minimal") == 0) {
         set(IconStyle::modern, ColorMode::monochrome, PercentPosition::inside);
+    } else if (wcscmp(preset, L"text") == 0) {
+        set(IconStyle::text, ColorMode::windows, PercentPosition::none);
+    } else if (wcscmp(preset, L"textPill") == 0) {
+        set(IconStyle::text, ColorMode::windows, PercentPosition::none);
+        s.textBackground = TextBackground::pill;
     }
 }
 
@@ -564,6 +618,8 @@ void LoadSettings() {
         g_settings.style = IconStyle::classic;
     } else if (wcscmp(style, L"apple") == 0) {
         g_settings.style = IconStyle::apple;
+    } else if (wcscmp(style, L"text") == 0) {
+        g_settings.style = IconStyle::text;
     }
     Wh_FreeStringSetting(style);
 
@@ -614,6 +670,48 @@ void LoadSettings() {
     g_settings.marginLeft = Wh_GetIntSetting(L"size.marginLeft");
     g_settings.marginRight = Wh_GetIntSetting(L"size.marginRight");
     g_settings.verticalOffset = Wh_GetIntSetting(L"size.verticalOffset");
+
+    // 0 means the setting is missing (e.g. saved by an older version).
+    int textFontSize = Wh_GetIntSetting(L"textOnly.fontSize");
+    g_settings.textFontSize =
+        textFontSize > 0 ? std::clamp(textFontSize, 4, 48) : 13;
+    PCWSTR weight = Wh_GetStringSetting(L"textOnly.weight");
+    g_settings.textWeight = 600;
+    if (wcscmp(weight, L"regular") == 0) {
+        g_settings.textWeight = 400;
+    } else if (wcscmp(weight, L"bold") == 0) {
+        g_settings.textWeight = 700;
+    }
+    Wh_FreeStringSetting(weight);
+    PCWSTR font = Wh_GetStringSetting(L"textOnly.font");
+    g_settings.textFont = L"Segoe UI Variable";
+    if (wcscmp(font, L"segoe") == 0) {
+        g_settings.textFont = L"Segoe UI";
+    } else if (wcscmp(font, L"bahnschrift") == 0) {
+        g_settings.textFont = L"Bahnschrift";
+    } else if (wcscmp(font, L"cascadia") == 0) {
+        g_settings.textFont = L"Cascadia Code";
+    } else if (wcscmp(font, L"consolas") == 0) {
+        g_settings.textFont = L"Consolas";
+    }
+    Wh_FreeStringSetting(font);
+    g_settings.textPercentSign = Wh_GetIntSetting(L"textOnly.percentSign");
+    PCWSTR chargingIcon = Wh_GetStringSetting(L"textOnly.chargingIcon");
+    g_settings.textChargingIcon = TextChargingIcon::after;
+    if (wcscmp(chargingIcon, L"before") == 0) {
+        g_settings.textChargingIcon = TextChargingIcon::before;
+    } else if (wcscmp(chargingIcon, L"none") == 0) {
+        g_settings.textChargingIcon = TextChargingIcon::none;
+    }
+    Wh_FreeStringSetting(chargingIcon);
+    PCWSTR background = Wh_GetStringSetting(L"textOnly.background");
+    g_settings.textBackground = TextBackground::none;
+    if (wcscmp(background, L"pill") == 0) {
+        g_settings.textBackground = TextBackground::pill;
+    } else if (wcscmp(background, L"outline") == 0) {
+        g_settings.textBackground = TextBackground::outline;
+    }
+    Wh_FreeStringSetting(background);
 
     PCWSTR preset = Wh_GetStringSetting(L"preset");
     ApplyPreset(preset);
@@ -790,6 +888,14 @@ struct BatteryIcon {
     Shapes::Polygon appleBolt{nullptr};
     std::wstring appleKey;
 
+    // Percentage-only style: [bolt] [pill with the number] [bolt].
+    Controls::StackPanel textRoot{nullptr};
+    Shapes::Polygon textBoltBefore{nullptr};
+    Controls::Border textPill{nullptr};
+    Controls::TextBlock textNumber{nullptr};
+    Shapes::Polygon textBoltAfter{nullptr};
+    std::wstring textKey;
+
     int64_t contentForegroundToken = 0;
     int64_t outlineTextToken = 0;
     int64_t fillTextToken = 0;
@@ -959,12 +1065,26 @@ Media::LinearGradientBrush MakeSplitBrush(Color left,
     return brush;
 }
 
-void UpdateAppleIcon(BatteryIcon& icon,
-                     FrameworkElement const& content,
-                     BatteryState state,
-                     int percent,
-                     int levelFallback,
-                     double fontSize) {
+// Colors shared by the Apple and percentage-only styles.
+struct StatusColors {
+    Color text;  // taskbar text color
+    Color fill;  // color for the current battery state
+};
+
+Color ResolveColorValue(const ColorSpec& spec, Color textColor, Color fallback) {
+    switch (spec.kind) {
+        case ColorSpec::Kind::Text:
+            return textColor;
+        case ColorSpec::Kind::Value:
+            return spec.color;
+        default:
+            return fallback;
+    }
+}
+
+StatusColors GetStatusColors(FrameworkElement const& content,
+                             BatteryState state,
+                             int percent) {
     const auto& s = g_settings;
 
     // Taskbar text color: white on a dark taskbar, black on a light one.
@@ -985,27 +1105,16 @@ void UpdateAppleIcon(BatteryIcon& icon,
     bool charging = state == BatteryState::Charging ||
                     state == BatteryState::PluggedIn;
 
-    Color appleDefault = textColor;
+    Color automatic = textColor;
     if (charging) {
-        appleDefault = green;
+        automatic = green;
     } else if (state == BatteryState::Saver) {
-        appleDefault = yellow;
+        automatic = yellow;
     } else if (percent >= 0 && percent <= s.lowThreshold) {
-        appleDefault = red;
+        automatic = red;
     }
 
-    auto resolve = [&](const ColorSpec& spec, Color fallback) {
-        switch (spec.kind) {
-            case ColorSpec::Kind::Text:
-                return textColor;
-            case ColorSpec::Kind::Value:
-                return spec.color;
-            default:
-                return fallback;
-        }
-    };
-
-    Color fillColor = appleDefault;
+    Color fillColor = automatic;
     if (s.colorMode == ColorMode::monochrome) {
         fillColor = textColor;
     } else if (s.colorMode == ColorMode::custom) {
@@ -1024,8 +1133,55 @@ void UpdateAppleIcon(BatteryIcon& icon,
         } else if (state == BatteryState::Saver) {
             spec = &s.batterySaver;
         }
-        fillColor = resolve(*spec, appleDefault);
+        fillColor = ResolveColorValue(*spec, textColor, automatic);
     }
+
+    return StatusColors{textColor, fillColor};
+}
+
+// Dark text on a light background, light text on a dark one.
+Color ContrastColor(Color background, Color fallback) {
+    if (background.A < 128) {
+        return fallback;
+    }
+    return Luminance(background) >= 150 ? ColorFromArgb(0xFF000000)
+                                        : ColorFromArgb(0xFFFFFFFF);
+}
+
+// A filled lightning bolt polygon.
+void SetBoltShape(Shapes::Polygon const& bolt, double height) {
+    static const float kBolt[][2] = {
+        {0.58f, 0.00f}, {0.06f, 0.58f}, {0.44f, 0.58f}, {0.30f, 1.00f},
+        {0.94f, 0.36f}, {0.56f, 0.36f}, {0.86f, 0.00f},
+    };
+    double width = height * 0.62;
+    Media::PointCollection points;
+    for (const auto& p : kBolt) {
+        points.Append({(float)(p[0] * width), (float)(p[1] * height)});
+    }
+    bolt.Points(points);
+    bolt.Width(width);
+    bolt.Height(height);
+}
+
+void UpdateAppleIcon(BatteryIcon& icon,
+                     FrameworkElement const& content,
+                     BatteryState state,
+                     int percent,
+                     int levelFallback,
+                     double fontSize) {
+    const auto& s = g_settings;
+
+    StatusColors colors = GetStatusColors(content, state, percent);
+    Color textColor = colors.text;
+    Color fillColor = colors.fill;
+
+    bool charging = state == BatteryState::Charging ||
+                    state == BatteryState::PluggedIn;
+
+    auto resolve = [&](const ColorSpec& spec, Color fallback) {
+        return ResolveColorValue(spec, textColor, fallback);
+    };
 
     // Empty part of the pill and the nub: translucent text color.
     Color trackColor = WithAlpha(textColor, 90);
@@ -1136,6 +1292,100 @@ void UpdateAppleIcon(BatteryIcon& icon,
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Percentage-only style
+
+void UpdateTextIcon(BatteryIcon& icon,
+                    FrameworkElement const& content,
+                    BatteryState state,
+                    int percent) {
+    const auto& s = g_settings;
+
+    StatusColors colors = GetStatusColors(content, state, percent);
+    Color numberColor = colors.fill;
+    if (s.percentColor.kind == ColorSpec::Kind::Value) {
+        numberColor = s.percentColor.color;
+    } else if (s.percentColor.kind == ColorSpec::Kind::Text) {
+        numberColor = colors.text;
+    }
+
+    bool charging = state == BatteryState::Charging ||
+                    state == BatteryState::PluggedIn;
+    Color boltColor = numberColor;
+    if (s.colorMode == ColorMode::custom) {
+        boltColor =
+            ResolveColorValue(s.chargingIndicator, colors.text, numberColor);
+    }
+
+    bool pill = s.textBackground == TextBackground::pill;
+    bool outlined = s.textBackground == TextBackground::outline;
+    bool showBolt = charging && s.textChargingIcon != TextChargingIcon::none;
+    double fontSize = s.textFontSize * s.scale / 100.0;
+
+    std::wstring text = std::to_wstring(percent);
+    if (s.textPercentSign) {
+        text += L'%';
+    }
+
+    auto argb = [](Color c) {
+        return (unsigned)((c.A << 24) | (c.R << 16) | (c.G << 8) | c.B);
+    };
+    wchar_t key[512];
+    swprintf(key, ARRAYSIZE(key), L"%s|%08X|%08X|%08X|%.2f|%d|%s|%d|%d|%d",
+             text.c_str(), argb(numberColor), argb(boltColor),
+             argb(colors.text), fontSize, s.textWeight, s.textFont.c_str(),
+             (int)s.textBackground, (int)s.textChargingIcon, showBolt);
+    if (icon.textKey == key) {
+        return;
+    }
+    icon.textKey = key;
+
+    // The number. On a filled pill it is "cut out" in a contrasting color.
+    SetTextIfChanged(icon.textNumber, winrt::hstring(text));
+    SetFontSizeIfChanged(icon.textNumber, fontSize);
+    icon.textNumber.FontWeight(
+        winrt::Windows::UI::Text::FontWeight{(uint16_t)s.textWeight});
+    icon.textNumber.FontFamily(Media::FontFamily(winrt::hstring(s.textFont)));
+    icon.textNumber.Foreground(Media::SolidColorBrush(
+        pill ? ContrastColor(numberColor, colors.text) : numberColor));
+
+    // Optional pill / outlined pill behind the number.
+    double padH = (pill || outlined) ? std::round(fontSize * 0.4) : 0;
+    double padV = (pill || outlined) ? std::round(fontSize * 0.2) : 0;
+    // Rounded corners also clip the content, so only round a visible pill.
+    double radius = (pill || outlined) ? std::round(fontSize * 0.56) : 0;
+    double border = outlined ? std::max(1.0, std::round(fontSize * 0.1)) : 0;
+    icon.textPill.Padding(Thickness{padH, padV, padH, padV});
+    icon.textPill.CornerRadius(CornerRadius{radius, radius, radius, radius});
+    icon.textPill.BorderThickness(Thickness{border, border, border, border});
+    if (pill) {
+        icon.textPill.Background(Media::SolidColorBrush(numberColor));
+    } else {
+        icon.textPill.ClearValue(Controls::Border::BackgroundProperty());
+    }
+    if (outlined) {
+        icon.textPill.BorderBrush(Media::SolidColorBrush(numberColor));
+    } else {
+        icon.textPill.ClearValue(Controls::Border::BorderBrushProperty());
+    }
+
+    // Charging bolt before or after the number.
+    double gap = std::max(1.0, std::round(fontSize * 0.2));
+    for (bool before : {true, false}) {
+        auto& bolt = before ? icon.textBoltBefore : icon.textBoltAfter;
+        bool visible =
+            showBolt && s.textChargingIcon == (before ? TextChargingIcon::before
+                                                      : TextChargingIcon::after);
+        SetVisible(bolt, visible);
+        if (visible) {
+            SetBoltShape(bolt, std::round(fontSize * 0.8));
+            bolt.Fill(Media::SolidColorBrush(boltColor));
+            bolt.Margin(before ? Thickness{0, 0, gap, 0}
+                               : Thickness{gap, 0, 0, 0});
+        }
+    }
+}
+
 void UpdateBatteryIconUnsafe(BatteryIcon& icon,
                              FrameworkElement const& content,
                              Controls::TextBlock const& sysOutline,
@@ -1152,11 +1402,12 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
     bool knownState = state != BatteryState::Unknown;
     bool classic = s.style == IconStyle::classic && knownState;
     bool apple = s.style == IconStyle::apple && knownState;
+    bool textOnly = s.style == IconStyle::text && knownState && percent >= 0;
     bool inside = s.percentPosition == PercentPosition::inside &&
-                  percent >= 0 && knownState && !apple;
+                  percent >= 0 && knownState && !apple && !textOnly;
     bool beside = (s.percentPosition == PercentPosition::left ||
                    s.percentPosition == PercentPosition::right) &&
-                  percent >= 0;
+                  percent >= 0 && !textOnly;
     bool charging = state == BatteryState::Charging ||
                     state == BatteryState::PluggedIn;
 
@@ -1232,7 +1483,8 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
             break;
     }
 
-    showIndicator = showIndicator && charging && !classic && !inside && !apple;
+    showIndicator = showIndicator && charging && !classic && !inside && !apple &&
+                    !textOnly;
 
     // Modern outline.
     SetFontSizeIfChanged(icon.outline, fontSize);
@@ -1240,7 +1492,7 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
                      inside ? winrt::hstring(std::wstring(1, kGlyphOutlineDischarging))
                             : winrt::hstring(outlineText));
     SetForeground(icon.outline, outlineBrush);
-    SetVisible(icon.outline, !classic && !apple);
+    SetVisible(icon.outline, !classic && !apple && !textOnly);
 
     // Charging bolt / plug, drawn over the outline and clipped to that area.
     if (showIndicator) {
@@ -1261,7 +1513,7 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
     SetFontSizeIfChanged(icon.fill, fontSize);
     SetTextIfChanged(icon.fill, winrt::hstring(fillText));
     SetForeground(icon.fill, fillBrush);
-    SetVisible(icon.fill, !classic && !inside && !apple &&
+    SetVisible(icon.fill, !classic && !inside && !apple && !textOnly &&
                               sysFill.Visibility() == Visibility::Visible);
 
     // Apple style pill.
@@ -1270,6 +1522,12 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
                         LevelFromFillGlyph(fillText), fontSize);
     }
     SetVisible(icon.appleRoot, apple);
+
+    // Percentage only.
+    if (textOnly) {
+        UpdateTextIcon(icon, content, state, percent);
+    }
+    SetVisible(icon.textRoot, textOnly);
 
     // Classic glyph.
     if (classic) {
@@ -1354,7 +1612,7 @@ void UpdateBatteryIconUnsafe(BatteryIcon& icon,
     // Windows' own percentage text: hide it while the mod shows one.
     if (auto sysText = icon.sysText.get()) {
         if (s.percentPosition != PercentPosition::none ||
-            (apple && s.appleNumber)) {
+            (apple && s.appleNumber) || textOnly) {
             OverrideProperty(icon, sysText, UIElement::OpacityProperty(),
                              winrt::box_value(0.0));
             OverrideProperty(icon, sysText, FrameworkElement::MaxWidthProperty(),
@@ -1487,6 +1745,7 @@ void DetachBatteryIcon(BatteryIcon& icon) {
             removeFrom(glyphGrid, icon.classic);
             removeFrom(glyphGrid, icon.insideGrid);
             removeFrom(glyphGrid, icon.appleRoot);
+            removeFrom(glyphGrid, icon.textRoot);
         }
         if (auto stackPanel = icon.stackPanel.get()) {
             removeFrom(stackPanel, icon.percent);
@@ -1677,6 +1936,30 @@ void EnsureBatteryIcon(FrameworkElement batteryIconContent) {
         children.Append(icon.classic);
         children.Append(icon.insideGrid);
         children.Append(icon.appleRoot);
+
+        icon.textRoot = Controls::StackPanel();
+        icon.textRoot.Name(L"WhBatteryText");
+        icon.textRoot.IsHitTestVisible(false);
+        icon.textRoot.Orientation(Controls::Orientation::Horizontal);
+        icon.textRoot.HorizontalAlignment(HorizontalAlignment::Center);
+        icon.textRoot.VerticalAlignment(VerticalAlignment::Center);
+        icon.textRoot.Visibility(Visibility::Collapsed);
+        icon.textBoltBefore = Shapes::Polygon();
+        icon.textBoltAfter = Shapes::Polygon();
+        for (auto& bolt : {icon.textBoltBefore, icon.textBoltAfter}) {
+            bolt.VerticalAlignment(VerticalAlignment::Center);
+            bolt.Visibility(Visibility::Collapsed);
+        }
+        icon.textPill = Controls::Border();
+        icon.textPill.VerticalAlignment(VerticalAlignment::Center);
+        icon.textNumber = CreateTextBlock(L"WhBatteryTextNumber");
+        icon.textNumber.VerticalAlignment(VerticalAlignment::Center);
+        icon.textNumber.TextLineBounds(TextLineBounds::Tight);
+        icon.textPill.Child(icon.textNumber);
+        icon.textRoot.Children().Append(icon.textBoltBefore);
+        icon.textRoot.Children().Append(icon.textPill);
+        icon.textRoot.Children().Append(icon.textBoltAfter);
+        children.Append(icon.textRoot);
 
         BatteryIcon* iconPtr = &icon;
         auto onChange = [iconPtr](DependencyObject const&,
