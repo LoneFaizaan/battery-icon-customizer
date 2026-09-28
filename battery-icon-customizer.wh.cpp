@@ -21,6 +21,8 @@
 
 Give the Windows 11 taskbar battery icon a new look - no coding needed.
 
+![Preview of the available looks](https://raw.githubusercontent.com/LoneFaizaan/battery-icon-customizer/main/images/preview.png)
+
 * **Apple iOS style** - a solid pill with the percentage cut out of it, green
   while charging, yellow in battery saver and red when low.
 * **Classic style** - the older, compact single-color Windows 11 battery.
